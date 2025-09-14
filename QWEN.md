@@ -11,6 +11,7 @@ The project is licensed under the MIT License, allowing for free use, modificati
 - Fluent interface for building SQL queries
 - Support for SELECT, INSERT, UPDATE, and DELETE operations
 - Parameter binding to prevent SQL injection
+- Automatic escaping of table names, column names, and identifiers to prevent SQL injection
 - Support for different parameter placeholder styles (QuestionMark `?` or DollarNumber `$1, $2`)
 - WHERE clause construction with AND/OR conditions
 - ORDER BY, LIMIT, and OFFSET support
@@ -117,6 +118,16 @@ Final output containing the built SQL string and parameters array.
 4. **Method Chaining**: Operations can be chained together for readable query construction
 5. **Relationship Support**: JOIN operations enable querying related data across multiple tables
 6. **Table Aliasing**: Support for table aliases improves query readability
+7. **Security by Default**: Automatic escaping of identifiers prevents SQL injection
+
+## Security Features
+
+The query builder includes several built-in security features to prevent SQL injection:
+
+1. **Parameter Binding**: All user data values are properly parameterized to prevent injection
+2. **Identifier Escaping**: Table names, column names, and other SQL identifiers are automatically escaped
+3. **Input Validation**: Dangerous SQL keywords and characters are filtered from identifiers
+4. **Context-Aware Escaping**: Different escaping rules are applied based on the context (table names vs. WHERE clauses)
 
 ## Example Usage
 

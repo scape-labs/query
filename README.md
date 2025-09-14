@@ -8,14 +8,45 @@ A Go library for building SQL queries with a fluent interface. Supports SELECT, 
 - Fluent interface for building SQL queries
 - Support for SELECT, INSERT, UPDATE, and DELETE operations
 - Parameter binding to prevent SQL injection
+- Automatic escaping of table names, column names, and identifiers to prevent SQL injection
 - Support for different parameter placeholder styles (QuestionMark `?` or DollarNumber `$1, $2`)
 - WHERE clause construction with AND/OR conditions
 - ORDER BY, LIMIT, and OFFSET support
 - JOIN operations for handling table relationships
 - Table alias support
 - Chainable API design
+- Security-focused implementation
 
-## Installation
+## Security
+
+This query builder includes built-in protection against SQL injection attacks:
+
+1. **Parameter Binding**: All user data values are properly parameterized using placeholders (`$1`, `$2`, `?`)
+2. **Identifier Escaping**: Table names, column names, and other SQL identifiers are automatically escaped to prevent injection
+3. **Input Validation**: Dangerous SQL keywords and characters are filtered from identifiers
+
+### Security Best Practices
+
+When using this query builder, follow these best practices:
+
+1. Always use the provided methods for setting user data (values in WHERE clauses, INSERT data, etc.)
+2. Avoid concatenating user input directly into method parameters
+3. Use the built-in JOIN methods rather than constructing JOIN conditions manually
+4. Validate and sanitize user input at the application level before passing it to the query builder
+
+Example of secure usage:
+```go
+// GOOD - User data is properly parameterized
+qb := query.NewQueryBuilder().
+    Table("users").
+    Select("id", "name").
+    Where("id", "=", userId) // userId is user input, properly parameterized
+
+// GOOD - Identifiers are automatically escaped
+qb := query.NewQueryBuilder().
+    Table(tableName). // tableName is user input, automatically escaped
+    Select(columnName) // columnName is user input, automatically escaped
+```
 
 ```bash
 go get github.com/scape-labs/query

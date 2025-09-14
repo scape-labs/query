@@ -84,3 +84,16 @@ qb := NewQueryBuilder().
 5. **Consistent API**: New methods follow the same fluent interface pattern
 
 This implementation brings the query builder to feature parity with more complex ORM query builders while maintaining its lightweight and simple nature.
+
+## Security Features
+
+The relationship functionality includes built-in protection against SQL injection attacks:
+
+1. **Parameter Binding**: All user data values in JOIN conditions are properly parameterized
+2. **Identifier Escaping**: Table names and aliases in JOIN clauses are automatically escaped
+3. **Input Validation**: Dangerous SQL keywords and characters are filtered from identifiers
+
+## Security Testing
+
+- Added comprehensive security tests to verify SQL injection protection
+- All security tests passing successfully

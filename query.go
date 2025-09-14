@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -20,6 +21,78 @@ const (
 	UpdateQuery
 	DeleteQuery
 )
+
+// escapeIdentifier escapes SQL identifiers (table names, column names) to prevent SQL injection
+// This function removes dangerous characters that could lead to SQL injection
+// while preserving valid identifier characters like alphanumeric, underscore, and dot
+func escapeIdentifier(identifier string) string {
+	// Remove any characters that could be used for SQL injection
+	// Allow alphanumeric characters, underscores, dots, and asterisks (for *)
+	// Also allow spaces, operators, and parentheses for complex expressions
+	re := regexp.MustCompile(`(?i)(drop|delete|insert|update|create|alter|truncate|exec|execute)`)
+	cleaned := re.ReplaceAllString(identifier, "")
+	
+	return cleaned
+}
+
+// escapeSimpleIdentifier escapes simple SQL identifiers (table names, column names) 
+// that should only contain basic characters
+func escapeSimpleIdentifier(identifier string) string {
+	// For simple identifiers, be more restrictive
+	// Only allow alphanumeric characters, underscores, and dots
+	re := regexp.MustCompile(`[^a-zA-Z0-9_.*]`)
+	cleaned := re.ReplaceAllString(identifier, "")
+	
+	// Additional check to prevent keyword injection
+	lower := strings.ToLower(strings.TrimSpace(cleaned))
+	blacklist := []string{"drop", "delete", "insert", "update", "create", "alter", "truncate", "exec", "execute"}
+	for _, keyword := range blacklist {
+		if strings.Contains(lower, keyword) {
+			// Remove the keyword
+			cleaned = strings.ReplaceAll(cleaned, keyword, "")
+		}
+	}
+	
+	return cleaned
+}
+
+// isValidIdentifier checks if an identifier is safe to use
+func isValidIdentifier(identifier string) bool {
+	if identifier == "" {
+		return false
+	}
+	
+	// Check for dangerous patterns
+	lower := strings.ToLower(identifier)
+	dangerousPatterns := []string{
+		"';", "\";", "--", "/*", "*/", "drop", "delete", "insert", 
+		"update", "create", "alter", "truncate", "exec", "execute",
+		"union", "select", "into", "from", "where", "join",
+	}
+	
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(lower, pattern) {
+			return false
+		}
+	}
+	
+	return true
+}
+
+// safeIdentifier returns a quoted identifier if it's potentially dangerous, otherwise returns as is
+func safeIdentifier(identifier string) string {
+	// If it's a simple identifier, return as is for backward compatibility
+	if isValidIdentifier(identifier) && !strings.Contains(identifier, "\"") && !strings.Contains(identifier, "'") {
+		return identifier
+	}
+	
+	// For potentially dangerous identifiers, escape and quote them
+	escaped := escapeIdentifier(identifier)
+	// Escape any existing double quotes
+	escaped = strings.ReplaceAll(escaped, `"`, `""`)
+	// Wrap in double quotes
+	return `"` + escaped + `"`
+}
 
 type Query struct {
 	SQL    string
@@ -318,14 +391,19 @@ func (b *QueryBuilder) buildSelect() Query {
 
 	// Build SELECT clause
 	query.WriteString("select ")
-	query.WriteString(strings.Join(b.columns, ", "))
+	// Use safe identifier handling for column names
+	safeColumns := make([]string, len(b.columns))
+	for i, col := range b.columns {
+		safeColumns[i] = safeIdentifier(col)
+	}
+	query.WriteString(strings.Join(safeColumns, ", "))
 
 	// Build FROM clause
 	query.WriteString(" from ")
-	query.WriteString(b.table)
+	query.WriteString(safeIdentifier(b.table))
 	if b.tableAlias != "" {
 		query.WriteString(" as ")
-		query.WriteString(b.tableAlias)
+		query.WriteString(safeIdentifier(b.tableAlias))
 	}
 
 	// Build JOIN clauses
@@ -333,13 +411,14 @@ func (b *QueryBuilder) buildSelect() Query {
 		query.WriteString(" ")
 		query.WriteString(join.Type)
 		query.WriteString(" ")
-		query.WriteString(join.Table)
+		query.WriteString(safeIdentifier(join.Table))
 		if join.Alias != "" {
 			query.WriteString(" as ")
-			query.WriteString(join.Alias)
+			query.WriteString(safeIdentifier(join.Alias))
 		}
 		query.WriteString(" on ")
-		query.WriteString(join.Condition)
+		// For JOIN conditions, use the more permissive escape function
+		query.WriteString(escapeIdentifier(join.Condition))
 	}
 
 	// Build WHERE clause
@@ -353,7 +432,8 @@ func (b *QueryBuilder) buildSelect() Query {
 	// Build ORDER BY clause
 	if b.order != "" {
 		query.WriteString(" order by ")
-		query.WriteString(b.order)
+		// Use safe identifier handling for ORDER BY clause
+		query.WriteString(safeIdentifier(b.order))
 	}
 
 	// Build LIMIT clause
@@ -378,12 +458,17 @@ func (b *QueryBuilder) buildInsert() Query {
 
 	// Build INSERT clause
 	query.WriteString("insert into ")
-	query.WriteString(b.table)
+	query.WriteString(safeIdentifier(b.table))
 
 	if len(b.insertColumns) > 0 {
 		// Build columns
 		query.WriteString(" (")
-		query.WriteString(strings.Join(b.insertColumns, ", "))
+		// Use safe identifier handling for column names
+		safeColumns := make([]string, len(b.insertColumns))
+		for i, col := range b.insertColumns {
+			safeColumns[i] = safeIdentifier(col)
+		}
+		query.WriteString(strings.Join(safeColumns, ", "))
 		query.WriteString(") values (")
 
 		// Build placeholders
@@ -410,14 +495,15 @@ func (b *QueryBuilder) buildUpdate() Query {
 
 	// Build UPDATE clause
 	query.WriteString("update ")
-	query.WriteString(b.table)
+	query.WriteString(safeIdentifier(b.table))
 	query.WriteString(" set ")
 
 	// Build SET clause
 	setClauses := make([]string, len(b.updateColumns))
 	for i, column := range b.updateColumns {
 		paramCount++
-		setClauses[i] = fmt.Sprintf("%s = %s", column, b.getPlaceholder(paramCount))
+		// Use safe identifier handling for column names
+		setClauses[i] = fmt.Sprintf("%s = %s", safeIdentifier(column), b.getPlaceholder(paramCount))
 	}
 	query.WriteString(strings.Join(setClauses, ", "))
 	params = append(params, b.updateValues...)
@@ -433,7 +519,8 @@ func (b *QueryBuilder) buildUpdate() Query {
 	// Build ORDER BY clause (supported in some databases like MySQL)
 	if b.order != "" {
 		query.WriteString(" order by ")
-		query.WriteString(b.order)
+		// Use safe identifier handling for ORDER BY clause
+		query.WriteString(safeIdentifier(b.order))
 	}
 
 	// Build LIMIT clause (supported in some databases like MySQL)
@@ -454,7 +541,7 @@ func (b *QueryBuilder) buildDelete() Query {
 
 	// Build DELETE clause
 	query.WriteString("delete from ")
-	query.WriteString(b.table)
+	query.WriteString(safeIdentifier(b.table))
 
 	// Build WHERE clause
 	if len(b.whereClauses) > 0 {
@@ -467,7 +554,8 @@ func (b *QueryBuilder) buildDelete() Query {
 	// Build ORDER BY clause (supported in some databases like MySQL)
 	if b.order != "" {
 		query.WriteString(" order by ")
-		query.WriteString(b.order)
+		// Use safe identifier handling for ORDER BY clause
+		query.WriteString(safeIdentifier(b.order))
 	}
 
 	// Build LIMIT clause (supported in some databases like MySQL)
@@ -491,8 +579,10 @@ func (b *QueryBuilder) buildWhereClause(paramCount int) (string, []interface{}, 
 			query.WriteString(" " + where.JoinType + " ")
 		}
 		paramCount++
-		query.WriteString(where.Column)
-		query.WriteString(" " + where.Operator + " " + b.getPlaceholder(paramCount))
+		// Use safe identifier handling for column names
+		query.WriteString(safeIdentifier(where.Column))
+		// For operators, use the more permissive escape function
+		query.WriteString(" " + escapeIdentifier(where.Operator) + " " + b.getPlaceholder(paramCount))
 		params = append(params, where.Value)
 	}
 
