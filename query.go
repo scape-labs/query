@@ -33,8 +33,10 @@ func (q Query) Sql() string {
 type QueryBuilder struct {
 	queryType    QueryType
 	table        string
+	tableAlias   string
 	columns      []string
 	whereClauses []*WhereClause
+	joinClauses  []*JoinClause
 	order        string
 	limit        int
 	offset       int
@@ -56,11 +58,20 @@ type WhereClause struct {
 	JoinType string // AND/OR
 }
 
+// JoinClause represents a JOIN operation in a query
+type JoinClause struct {
+	Type      string // INNER, LEFT, RIGHT, FULL
+	Table     string
+	Alias     string
+	Condition string
+}
+
 func NewQueryBuilder() *QueryBuilder {
 	return &QueryBuilder{
-		queryType:  SelectQuery,
-		columns:    []string{"*"},
-		paramStyle: DollarNumber, // Default to DollarNumber
+		queryType:   SelectQuery,
+		columns:     []string{"*"},
+		joinClauses: []*JoinClause{},
+		paramStyle:  DollarNumber, // Default to DollarNumber
 	}
 }
 
@@ -171,6 +182,109 @@ func (b *QueryBuilder) Offset(offset int) *QueryBuilder {
 	return b
 }
 
+// JOIN operations
+func (b *QueryBuilder) Join(table, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "JOIN",
+		Table:     table,
+		Condition: condition,
+	})
+	return b
+}
+
+func (b *QueryBuilder) LeftJoin(table, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "LEFT JOIN",
+		Table:     table,
+		Condition: condition,
+	})
+	return b
+}
+
+func (b *QueryBuilder) RightJoin(table, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "RIGHT JOIN",
+		Table:     table,
+		Condition: condition,
+	})
+	return b
+}
+
+func (b *QueryBuilder) InnerJoin(table, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "INNER JOIN",
+		Table:     table,
+		Condition: condition,
+	})
+	return b
+}
+
+func (b *QueryBuilder) FullJoin(table, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "FULL JOIN",
+		Table:     table,
+		Condition: condition,
+	})
+	return b
+}
+
+// JOIN operations with alias support
+func (b *QueryBuilder) JoinAs(table, alias, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "JOIN",
+		Table:     table,
+		Alias:     alias,
+		Condition: condition,
+	})
+	return b
+}
+
+func (b *QueryBuilder) LeftJoinAs(table, alias, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "LEFT JOIN",
+		Table:     table,
+		Alias:     alias,
+		Condition: condition,
+	})
+	return b
+}
+
+func (b *QueryBuilder) RightJoinAs(table, alias, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "RIGHT JOIN",
+		Table:     table,
+		Alias:     alias,
+		Condition: condition,
+	})
+	return b
+}
+
+func (b *QueryBuilder) InnerJoinAs(table, alias, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "INNER JOIN",
+		Table:     table,
+		Alias:     alias,
+		Condition: condition,
+	})
+	return b
+}
+
+func (b *QueryBuilder) FullJoinAs(table, alias, condition string) *QueryBuilder {
+	b.joinClauses = append(b.joinClauses, &JoinClause{
+		Type:      "FULL JOIN",
+		Table:     table,
+		Alias:     alias,
+		Condition: condition,
+	})
+	return b
+}
+
+// Table alias support
+func (b *QueryBuilder) As(alias string) *QueryBuilder {
+	b.tableAlias = alias
+	return b
+}
+
 func (b *QueryBuilder) getPlaceholder(index int) string {
 	switch b.paramStyle {
 	case QuestionMark:
@@ -209,6 +323,24 @@ func (b *QueryBuilder) buildSelect() Query {
 	// Build FROM clause
 	query.WriteString(" from ")
 	query.WriteString(b.table)
+	if b.tableAlias != "" {
+		query.WriteString(" as ")
+		query.WriteString(b.tableAlias)
+	}
+
+	// Build JOIN clauses
+	for _, join := range b.joinClauses {
+		query.WriteString(" ")
+		query.WriteString(join.Type)
+		query.WriteString(" ")
+		query.WriteString(join.Table)
+		if join.Alias != "" {
+			query.WriteString(" as ")
+			query.WriteString(join.Alias)
+		}
+		query.WriteString(" on ")
+		query.WriteString(join.Condition)
+	}
 
 	// Build WHERE clause
 	if len(b.whereClauses) > 0 {
@@ -366,4 +498,3 @@ func (b *QueryBuilder) buildWhereClause(paramCount int) (string, []interface{}, 
 
 	return query.String(), params, paramCount
 }
-
